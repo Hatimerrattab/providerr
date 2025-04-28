@@ -6,6 +6,7 @@ const authRoutes = require('./routes/authRoutes');
 const profileRouter = require('./routes/profileRoutes');
 const serviceRoutes = require('./routes/serviceRoutes');
 const bookingRouter = require('./routes/bookingRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes');
 const earningsRouter = require('./routes/earningsRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const providerRoutes = require('./routes/providerRoutes');
@@ -74,6 +75,7 @@ app.use('/api/providers/services', serviceRoutes);
 app.use('/api/bookings', bookingRouter);
 app.use('/api/earnings', earningsRouter);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/provider', dashboardRoutes);
 
 
 // Error handling middleware
