@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const authRoutes = require('./routes/authRoutes');
 const profileRouter = require('./routes/profileRoutes');
-const serviceRouter = require('./routes/serviceRoutes');
+const serviceRoutes = require('./routes/serviceRoutes');
 const bookingRouter = require('./routes/bookingRoutes');
 const earningsRouter = require('./routes/earningsRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
@@ -70,11 +70,10 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/provider', providerRoutes); 
 app.use('/api/profile', profileRouter);
-app.use('/api/services', serviceRouter);
+app.use('/api/providers/services', serviceRoutes);
 app.use('/api/bookings', bookingRouter);
 app.use('/api/earnings', earningsRouter);
 app.use('/api/notifications', notificationRoutes);
-app.use('/api/auth', providerRoutes);
 
 
 // Error handling middleware

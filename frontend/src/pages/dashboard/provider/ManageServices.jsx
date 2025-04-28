@@ -38,28 +38,38 @@ const ManageServices = () => {
     const fetchServices = async () => {
       try {
         setLoading(true);
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('authToken');
         if (!token) {
           throw new Error('Authentication token not found. Please login again.');
         }
-        const response = await axios.get(`${API_BASE_URL}/api/providers/services`, {
+        const response = await axios.get(`${API_BASE_URL}/providers/services`, {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           }
         });
-        if (response.data && Array.isArray(response.data)) {
-          setServices(response.data);
+        
+        // Updated response handling
+        if (response.data && response.data.data && Array.isArray(response.data.data.services)) {
+          setServices(response.data.data.services);
         } else {
           throw new Error('Invalid data format received from server');
         }
       } catch (err) {
         console.error('Fetch Services Error:', err);
-        setError(err.response?.data?.message || err.message || 'Failed to fetch services.');
+        if (err.response) {
+          setError(err.response.data?.message || `Server error: ${err.response.status}`);
+          if (err.response.status === 401) {
+            window.location.href = '/auth';
+          }
+        } else {
+          setError(err.message || 'Failed to fetch services.');
+        }
       } finally {
         setLoading(false);
       }
     };
+    
     
     fetchServices();
   }, []);
@@ -78,14 +88,14 @@ const ManageServices = () => {
     e.preventDefault();
     try {
       setFormSubmitting(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('authToken'); // Fixed token key
       
       if (!token) {
         throw new Error('Authentication token not found. Please login again.');
       }
-
+  
       const response = await axios.post(
-        `${API_BASE_URL}/api/providers/services`,
+        `${API_BASE_URL}/providers/services`, // Fixed URL
         formData,
         {
           headers: {
@@ -94,8 +104,13 @@ const ManageServices = () => {
           }
         }
       );
-
-      setServices([...services, response.data]);
+  
+      // Update services list with new service
+      if (response.data && response.data.data) {
+        setServices([...services, response.data.data]);
+      }
+      
+      // Reset form
       setFormData({
         name: '',
         category: '',
@@ -105,16 +120,19 @@ const ManageServices = () => {
         serviceAreas: []
       });
       setError(null);
-      setActiveTab('manage'); // Switch to manage tab after successful submission
+      setActiveTab('manage');
     } catch (err) {
       console.error('Submit Error:', err);
-      setError(err.response?.data?.message || 
-              'Failed to submit service. Please check your data and try again.');
+      if (err.response) {
+        setError(err.response.data?.message || `Server error: ${err.response.status}`);
+      } else {
+        setError('Failed to submit service. Please check your data and try again.');
+      }
     } finally {
       setFormSubmitting(false);
     }
   };
-
+  
   const deleteService = async (id) => {
     if (!window.confirm('Are you sure you want to delete this service? This action cannot be undone.')) {
       return;
@@ -122,25 +140,28 @@ const ManageServices = () => {
     
     try {
       setDeleteLoading(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('authToken'); // Fixed token key
       
       if (!token) {
         throw new Error('Authentication token not found. Please login again.');
       }
-
-      await axios.delete(`${API_BASE_URL}/api/providers/services/${id}`, {
+  
+      await axios.delete(`${API_BASE_URL}/providers/services/${id}`, { // Fixed URL
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
-
+  
       setServices(services.filter(service => service._id !== id));
       setError(null);
     } catch (err) {
       console.error('Delete Error:', err);
-      setError(err.response?.data?.message || 
-              'Failed to delete service. Please try again.');
+      if (err.response) {
+        setError(err.response.data?.message || `Server error: ${err.response.status}`);
+      } else {
+        setError('Failed to delete service. Please try again.');
+      }
     } finally {
       setDeleteLoading(false);
     }

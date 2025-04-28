@@ -3,12 +3,15 @@ const router = express.Router();
 const serviceController = require('../controllers/serviceController');
 const { protect } = require('../middleware/auth');
 
-console.log('Middleware type:', typeof protect);
-
-router.use(protect); 
+router.use(protect);
 
 router.route('/')
   .get(serviceController.getAllServices)
   .post(serviceController.createService);
+
+router.route('/:id')
+  .get(serviceController.getService)
+  .patch(serviceController.updateService)
+  .delete(serviceController.deleteService);
 
 module.exports = router;

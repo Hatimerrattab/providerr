@@ -28,8 +28,18 @@ const providerSchema = new mongoose.Schema({
     default: 'pending' 
   },
   backgroundCheck: { type: Boolean, required: true, default: false },
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
+  passwordChangedAt: Date 
 });
+
+providerSchema.methods.changedPasswordAfter = function (JWTTimestamp) {
+  if (this.passwordChangedAt) {
+    const changedTimestamp = parseInt(this.passwordChangedAt.getTime() / 1000, 10);
+    return JWTTimestamp < changedTimestamp;
+  }
+  
+  return false;
+};
 
 const Provider = mongoose.model('Provider', providerSchema);
 

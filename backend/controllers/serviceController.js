@@ -1,6 +1,6 @@
 const Service = require('../models/Service');
-const authMiddleware = require('../middleware/auth');
 
+// Get all services for the current provider
 exports.getAllServices = async (req, res) => {
   try {
     const services = await Service.find({ provider: req.user.id });
@@ -20,9 +20,24 @@ exports.getAllServices = async (req, res) => {
   }
 };
 
+// Get a specific service by ID
 exports.getService = async (req, res) => {
   try {
+    if (!req.params.id) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Service ID is required'
+      });
+    }
+
     const service = await Service.findOne({ _id: req.params.id, provider: req.user.id });
+
+    if (!service) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'Service not found'
+      });
+    }
 
     res.status(200).json({
       status: 'success',
@@ -38,6 +53,7 @@ exports.getService = async (req, res) => {
   }
 };
 
+// Create a new service
 exports.createService = async (req, res) => {
   try {
     const newService = await Service.create({
@@ -59,8 +75,16 @@ exports.createService = async (req, res) => {
   }
 };
 
+// Update an existing service
 exports.updateService = async (req, res) => {
   try {
+    if (!req.params.id) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Service ID is required'
+      });
+    }
+
     const service = await Service.findOneAndUpdate(
       { _id: req.params.id, provider: req.user.id },
       req.body,
@@ -69,6 +93,13 @@ exports.updateService = async (req, res) => {
         runValidators: true
       }
     );
+
+    if (!service) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'Service not found'
+      });
+    }
 
     res.status(200).json({
       status: 'success',
@@ -84,9 +115,24 @@ exports.updateService = async (req, res) => {
   }
 };
 
+// Delete a service
 exports.deleteService = async (req, res) => {
   try {
-    await Service.findOneAndDelete({ _id: req.params.id, provider: req.user.id });
+    if (!req.params.id) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Service ID is required'
+      });
+    }
+
+    const service = await Service.findOneAndDelete({ _id: req.params.id, provider: req.user.id });
+
+    if (!service) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'Service not found'
+      });
+    }
 
     res.status(204).json({
       status: 'success',
