@@ -191,7 +191,7 @@ const ProviderRegistrationModal = ({ isOpen, onClose }) => {
       
       // Redirect to dashboard or appropriate page
       setTimeout(() => {
-        navigate('/provider/dashboard', { replace: true });
+        navigate('/provider-dashboard', { replace: true });
       }, 2000);
   
     } catch (error) {

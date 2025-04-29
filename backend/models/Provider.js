@@ -39,6 +39,22 @@ providerSchema.methods.changedPasswordAfter = function (JWTTimestamp) {
   }
   
   return false;
+
+  providerSchema.virtual('fullName').get(function() {
+    return `${this.firstName} ${this.lastName}`;
+  });
+  
+  // Add instance methods here
+  providerSchema.methods.toJSON = function() {
+    const obj = this.toObject();
+    delete obj.password;
+    delete obj.__v;
+    delete obj.verificationToken;
+    delete obj.verificationTokenExpires;
+    delete obj.passwordResetToken;
+    delete obj.passwordResetExpires;
+    return obj;
+  };
 };
 
 const Provider = mongoose.model('Provider', providerSchema);

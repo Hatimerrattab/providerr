@@ -1,463 +1,115 @@
 const Provider = require('../models/Provider');
-const Notification = require('../models/Notification');
-const Review = require('../models/Review');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const fs = require('fs');
+const sharp = require('sharp');
 const path = require('path');
+const fs = require('fs-extra');
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
+
+// Configure upload directory
+const UPLOAD_DIR = path.join(__dirname, '../uploads/providers');
+fs.ensureDirSync(UPLOAD_DIR);
+
+// Helper function to process and save images
+const processImage = async (fileBuffer, prefix, providerId) => {
+  const filename = `${prefix}-${providerId}-${Date.now()}.webp`;
+  const filepath = path.join(UPLOAD_DIR, filename);
+  
+  await sharp(fileBuffer)
+    .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
+    .webp({ quality: 80 })
+    .toFile(filepath);
+  
+  return `/uploads/providers/${filename}`;
+};
 
 exports.registerProvider = async (req, res) => {
   try {
-    // Check if files were uploaded
-    if (!req.files || !req.files.idPhoto || !req.files.selfiePhoto || !req.files.profilePhoto) {
-      return res.status(400).json({ error: 'All required photos must be uploaded' });
+    // 1. Validate required fields
+    const requiredFields = [
+      'firstName', 'lastName', 'email', 'password', 
+      'phone', 'dob', 'address', 'city', 'zip',
+      'services', 'experience', 'availability', 
+      'serviceAreas', 'bio', 'terms'
+    ];
+    
+    const missingFields = requiredFields.filter(field => !req.body[field]);
+    if (missingFields.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields',
+        missing: missingFields
+      });
     }
 
-    const { 
-      firstName, lastName, email, phone, dob,
-      address, city, zip, services, otherSkills,
-      experience, availability, serviceAreas, bio,
-      terms, communications, backgroundCheck
-    } = req.body;
-
-    // Validate required fields
-    if (!firstName || !lastName || !email || !phone || !dob || !address || 
-        !city || !zip || !services || !experience || !availability || 
-        !serviceAreas || !bio || terms === undefined) {
-      return res.status(400).json({ error: 'All required fields must be filled' });
-    }
-
-    // Check if provider already exists
-    const existingProvider = await Provider.findOne({ email });
+    // 2. Check if provider already exists
+    const existingProvider = await Provider.findOne({ email: req.body.email });
     if (existingProvider) {
-      return res.status(409).json({ error: 'Email already registered' });
+      return res.status(409).json({
+        success: false,
+        message: 'Email already registered'
+      });
     }
 
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(req.body.password, salt);
-
-    // Create new provider
+    // 3. Create provider first to get ID for filenames
     const provider = new Provider({
-      firstName,
-      lastName,
-      email,
-      password: hashedPassword,
-      phone,
-      dob: new Date(dob),
-      address,
-      city,
-      zip,
-      idPhoto: req.files.idPhoto[0].path,
-      selfiePhoto: req.files.selfiePhoto[0].path,
-      profilePhoto: req.files.profilePhoto[0].path,
-      services: JSON.parse(services),
-      otherSkills,
-      experience,
-      availability,
-      serviceAreas: JSON.parse(serviceAreas),
-      bio,
-      terms: terms === 'true' || terms === true,
-      communications: communications === 'true' || communications === true,
-      backgroundCheck: backgroundCheck === 'true' || backgroundCheck === true,
-      status: 'pending'
+      ...req.body,
+      services: JSON.parse(req.body.services),
+      serviceAreas: JSON.parse(req.body.serviceAreas),
+      verificationToken: crypto.randomBytes(32).toString('hex'),
+      verificationTokenExpires: Date.now() + 24 * 60 * 60 * 1000 // 24 hours
     });
 
-    // Save provider
+    // 4. Process and save files
+    const [idPhoto, selfiePhoto, profilePhoto] = await Promise.all([
+      processImage(req.files.idPhoto[0].buffer, 'id', provider._id),
+      processImage(req.files.selfiePhoto[0].buffer, 'selfie', provider._id),
+      processImage(req.files.profilePhoto[0].buffer, 'profile', provider._id)
+    ]);
+
+    // 5. Update provider with file paths
+    provider.idPhoto = idPhoto;
+    provider.selfiePhoto = selfiePhoto;
+    provider.profilePhoto = profilePhoto;
+
+    // 6. Hash password and save provider
     await provider.save();
 
-    // Create JWT token
+    // 7. Generate JWT token
     const token = jwt.sign(
-      { id: provider._id, role: 'provider', status: provider.status },
+      { id: provider._id, role: 'provider' },
       process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
+    // 8. Send response
     res.status(201).json({
       success: true,
       token,
       provider: {
         id: provider._id,
+        fullName: provider.fullName,
         email: provider.email,
-        firstName: provider.firstName,
-        lastName: provider.lastName,
         status: provider.status,
         profilePhoto: provider.profilePhoto
       }
     });
 
   } catch (error) {
-    console.error('Provider registration error:', error);
-    
-    // Clean up uploaded files if error occurred
-    if (req.files) {
-      Object.values(req.files).forEach(fileArray => {
-        fileArray.forEach(file => {
-          if (fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-          }
-        });
+    console.error('Registration error:', error);
+
+    // Handle specific errors
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors
       });
     }
 
-    res.status(500).json({ 
-      error: 'Server error during registration',
-      message: error.message 
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
     });
-  }
-};
-
-// Get provider dashboard data
-exports.getDashboardData = async (req, res) => {
-  try {
-    const providerId = req.user.id;
-    
-    const provider = await Provider.findById(providerId)
-      .select('-password -__v');
-    
-    if (!provider) {
-      return res.status(404).json({ message: 'Provider not found' });
-    }
-
-    // Get stats
-    const pendingBookings = await Booking.countDocuments({ 
-      providerId, 
-      status: 'pending' 
-    });
-    const upcomingBookings = await Booking.countDocuments({ 
-      providerId, 
-      status: 'confirmed' 
-    });
-    const unreadMessages = 0; // Would come from a messaging system
-    const newReviews = await Review.countDocuments({ 
-      providerId, 
-      createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } // Last 7 days
-    });
-
-    // Get upcoming bookings
-    const upcomingJobs = await Booking.find({ 
-      providerId, 
-      status: 'confirmed',
-      date: { $gte: new Date() }
-    })
-    .sort({ date: 1 })
-    .limit(3)
-    .populate('clientId', 'firstName lastName email phone profilePhoto');
-
-    // Get recent reviews
-    const recentReviews = await Review.find({ providerId })
-      .sort({ createdAt: -1 })
-      .limit(3)
-      .populate('clientId', 'firstName lastName profilePhoto');
-
-    res.json({
-      provider,
-      stats: {
-        pendingBookings,
-        upcomingBookings,
-        unreadMessages,
-        newReviews
-      },
-      upcomingJobs,
-      feedback: {
-        rating: provider.rating,
-        totalReviews: provider.totalReviews,
-        recentReviews
-      }
-    });
-  } catch (error) {
-    console.error('Error getting dashboard data:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// Get provider bookings
-exports.getBookings = async (req, res) => {
-  try {
-    const providerId = req.user.id;
-    const { status } = req.query;
-    
-    let query = { providerId };
-    if (status) {
-      query.status = status;
-    }
-
-    const bookings = await Booking.find(query)
-      .sort({ date: status === 'completed' ? -1 : 1 })
-      .populate('clientId', 'firstName lastName email phone profilePhoto');
-
-    res.json(bookings);
-  } catch (error) {
-    console.error('Error getting bookings:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// Update booking status
-exports.updateBookingStatus = async (req, res) => {
-  try {
-    const { bookingId } = req.params;
-    const { status } = req.body;
-    const providerId = req.user.id;
-
-    const booking = await Booking.findOneAndUpdate(
-      { _id: bookingId, providerId },
-      { status },
-      { new: true }
-    );
-
-    if (!booking) {
-      return res.status(404).json({ message: 'Booking not found' });
-    }
-
-    // Create notification for client
-    await Notification.create({
-      userId: booking.clientId,
-      userType: 'client',
-      type: 'booking',
-      title: 'Booking Status Updated',
-      message: `Your booking for ${booking.serviceName} has been ${status}`,
-      metadata: {
-        bookingId: booking._id,
-        status
-      }
-    });
-
-    res.json(booking);
-  } catch (error) {
-    console.error('Error updating booking status:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// Get provider services
-exports.getServices = async (req, res) => {
-  try {
-    const providerId = req.user.id;
-    const { status } = req.query;
-    
-    const provider = await Provider.findById(providerId)
-      .select('services');
-    
-    if (!provider) {
-      return res.status(404).json({ message: 'Provider not found' });
-    }
-
-    let services = provider.services;
-    if (status) {
-      services = services.filter(s => s.status === status);
-    }
-
-    res.json(services);
-  } catch (error) {
-    console.error('Error getting services:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// Add new service
-exports.addService = async (req, res) => {
-  try {
-    const providerId = req.user.id;
-    const { 
-      name, 
-      category, 
-      price, 
-      duration, 
-      description, 
-      serviceAreas 
-    } = req.body;
-
-    const newService = {
-      name,
-      category,
-      price,
-      duration,
-      description,
-      serviceAreas,
-      status: 'pending'
-    };
-
-    const provider = await Provider.findByIdAndUpdate(
-      providerId,
-      { $push: { services: newService } },
-      { new: true }
-    );
-
-    res.json(provider.services[provider.services.length - 1]);
-  } catch (error) {
-    console.error('Error adding service:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// Update service
-exports.updateService = async (req, res) => {
-  try {
-    const providerId = req.user.id;
-    const { serviceId } = req.params;
-    const updateData = req.body;
-
-    const provider = await Provider.findOneAndUpdate(
-      { 
-        _id: providerId,
-        'services._id': serviceId 
-      },
-      { 
-        $set: {
-          'services.$.name': updateData.name,
-          'services.$.category': updateData.category,
-          'services.$.price': updateData.price,
-          'services.$.duration': updateData.duration,
-          'services.$.description': updateData.description,
-          'services.$.serviceAreas': updateData.serviceAreas
-        } 
-      },
-      { new: true }
-    );
-
-    if (!provider) {
-      return res.status(404).json({ message: 'Service not found' });
-    }
-
-    const updatedService = provider.services.id(serviceId);
-    res.json(updatedService);
-  } catch (error) {
-    console.error('Error updating service:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// Delete service
-exports.deleteService = async (req, res) => {
-  try {
-    const providerId = req.user.id;
-    const { serviceId } = req.params;
-
-    const provider = await Provider.findByIdAndUpdate(
-      providerId,
-      { $pull: { services: { _id: serviceId } } },
-      { new: true }
-    );
-
-    res.json({ message: 'Service deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting service:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// Get provider notifications
-exports.getNotifications = async (req, res) => {
-  try {
-    const providerId = req.user.id;
-    const { type, limit } = req.query;
-
-    let query = { 
-      userId: providerId, 
-      userType: 'provider' 
-    };
-    
-    if (type) {
-      query.type = type;
-    }
-
-    const notifications = await Notification.find(query)
-      .sort({ createdAt: -1 })
-      .limit(parseInt(limit) || 20);
-
-    res.json(notifications);
-  } catch (error) {
-    console.error('Error getting notifications:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// Mark notifications as read
-exports.markNotificationsAsRead = async (req, res) => {
-  try {
-    const providerId = req.user.id;
-    const { notificationIds } = req.body;
-
-    await Notification.updateMany(
-      { 
-        _id: { $in: notificationIds },
-        userId: providerId 
-      },
-      { isRead: true }
-    );
-
-    res.json({ message: 'Notifications marked as read' });
-  } catch (error) {
-    console.error('Error marking notifications as read:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// Get provider earnings
-exports.getEarnings = async (req, res) => {
-  try {
-    const providerId = req.user.id;
-    const { startDate, endDate } = req.query;
-
-    let query = { 
-      providerId,
-      status: 'completed',
-      paymentStatus: 'paid'
-    };
-
-    if (startDate && endDate) {
-      query.completedAt = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
-      };
-    }
-
-    const earningsData = await Booking.aggregate([
-      { $match: query },
-      { 
-        $group: {
-          _id: null,
-          totalEarnings: { $sum: '$price' },
-          completedBookings: { $sum: 1 }
-        }
-      }
-    ]);
-
-    const result = earningsData.length > 0 ? earningsData[0] : { 
-      totalEarnings: 0, 
-      completedBookings: 0 
-    };
-
-    res.json(result);
-  } catch (error) {
-    console.error('Error getting earnings:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// Update provider profile
-exports.updateProfile = async (req, res) => {
-  try {
-    const providerId = req.user.id;
-    const updateData = req.body;
-
-    // Handle file uploads if needed
-    if (req.files) {
-      if (req.files.profilePhoto) {
-        updateData.profilePhoto = req.files.profilePhoto[0].path;
-      }
-    }
-
-    const provider = await Provider.findByIdAndUpdate(
-      providerId,
-      updateData,
-      { new: true }
-    ).select('-password -__v');
-
-    res.json(provider);
-  } catch (error) {
-    console.error('Error updating profile:', error);
-    res.status(500).json({ message: 'Server error' });
   }
 };

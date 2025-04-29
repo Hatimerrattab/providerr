@@ -14,6 +14,7 @@ import AdminDashboard from './layouts/dashboard/AdminDashboard';
 // Pages
 import Home from './pages/Home';
 import AuthPage from './pages/AuthPage';
+import ResetPassword from './pages/ResetPassword';
 import Services from './pages/Services';
 import ServiceDetailsPage from './pages/ServiceDetailsPage';
 import TaskerDetailsPage from './pages/TaskerDetailsPage';
@@ -171,6 +172,7 @@ const App = () => {
           <Route element={<PublicLayout />}>
             <Route path="/" element={<Home />} />
             <Route path="/services" element={<Services />} />
+            <Route path="/reset-password/:token" element={<ResetPassword />} />
             <Route path="/service-details/:id" element={<ServiceDetailsPage />} />
             <Route path="/taskers/:id" element={<TaskerDetailsPage />} />
             <Route path="/become-tasker" element={<BecomeTasker />} />

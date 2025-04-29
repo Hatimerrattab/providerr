@@ -20,6 +20,22 @@ exports.getAllNotifications = async (req, res) => {
   }
 };
 
+exports.deleteNotification = async (req, res) => {
+  try {
+    await Notification.findByIdAndDelete(req.params.id);
+
+    res.status(204).json({
+      status: 'success',
+      data: null
+    });
+  } catch (err) {
+    res.status(404).json({
+      status: 'fail',
+      message: err.message
+    });
+  }
+};
+
 exports.markAsRead = async (req, res) => {
   try {
     const notification = await Notification.findByIdAndUpdate(

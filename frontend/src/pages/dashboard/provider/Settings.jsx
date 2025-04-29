@@ -1,44 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import {
   FiChevronRight, FiCheck,
   FiEdit2, FiPlus, FiTrash2, FiEye, FiEyeOff,
   FiMail, FiCalendar, FiGlobe, FiPhone
 } from 'react-icons/fi';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+
 const Settings = () => {
   const [activeTab, setActiveTab] = useState('personal');
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [formData, setFormData] = useState({
-    // Personal Details
-    profileImage: 'https://randomuser.me/api/portraits/men/32.jpg',
-    firstName: 'John',
-    lastName: 'Doe',
-    nickName: 'Johnny',
+    profileImage: '',
+    firstName: '',
+    lastName: '',
+    nickName: '',
     country: 'United States',
-    phone: '+1 (555) 123-4567',
-    email: 'john.doe@example.com',
-    birthDate: '1985-06-15',
-    description: 'Professional service provider with 5 years of experience in home maintenance and cleaning services.',
-    additionalEmails: ['john.doe.work@example.com'],
+    phone: '',
+    email: '',
+    birthDate: '',
+    description: '',
+    additionalEmails: [],
     newEmail: '',
-
-    // Service Areas
-    serviceAreas: [
-      { id: 1, area: 'New York, NY', radius: '10 miles' },
-      { id: 2, area: 'Jersey City, NJ', radius: '15 miles' }
-    ],
+    serviceAreas: [],
     newArea: '',
     newRadius: '',
-
-   
-
-    // Notification Settings
     emailNotifications: true,
     smsNotifications: false,
     bookingAlerts: true,
     promotionAlerts: true,
-
-    // Work Hours
     workHours: {
       monday: { start: '09:00', end: '17:00', available: true },
       tuesday: { start: '09:00', end: '17:00', available: true },
@@ -48,12 +41,57 @@ const Settings = () => {
       saturday: { start: '10:00', end: '15:00', available: false },
       sunday: { start: '', end: '', available: false }
     },
-
-    // Security
     currentPassword: '',
     newPassword: '',
     confirmPassword: ''
   });
+
+  // Get auth token
+  const getAuthToken = () => {
+    return localStorage.getItem('authToken') || 
+           localStorage.getItem('token') ||
+           sessionStorage.getItem('authToken') ||
+           sessionStorage.getItem('token');
+  };
+
+  // Fetch settings from backend
+  const fetchSettings = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('Please login to view settings');
+      }
+
+      const response = await axios.get(`${API_BASE_URL}/api/providers/settings`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      
+      setFormData(prev => ({
+        ...prev,
+        ...response.data,
+        newEmail: '',
+        newArea: '',
+        newRadius: '',
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      }));
+    } catch (err) {
+      setError(err.response?.data?.message || err.message);
+      console.error('Error fetching settings:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSettings();
+  }, []);
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -152,32 +190,72 @@ const Settings = () => {
     }));
   };
 
-  const addPaymentMethod = () => {
-    console.log('Add payment method');
-  };
-
-  const removePaymentMethod = (id) => {
-    setFormData(prev => ({
-      ...prev,
-      paymentMethods: prev.paymentMethods.filter(method => method.id !== id)
-    }));
-  };
-
-  const setDefaultPaymentMethod = (id) => {
-    setFormData(prev => ({
-      ...prev,
-      paymentMethods: prev.paymentMethods.map(method => ({
-        ...method,
-        default: method.id === id
-      }))
-    }));
-  };
-
-  const handleSubmit = (e) => {
+  // Update settings in backend
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('Form submitted:', formData);
-    alert('Settings saved successfully!');
+    try {
+      setLoading(true);
+      setError(null);
+      const token = getAuthToken();
+      
+      if (!token) {
+        throw new Error('Please login to update settings');
+      }
+
+      // Prepare data for backend
+      const settingsData = {
+        profileImage: formData.profileImage,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        nickName: formData.nickName,
+        country: formData.country,
+        phone: formData.phone,
+        email: formData.email,
+        birthDate: formData.birthDate,
+        description: formData.description,
+        additionalEmails: formData.additionalEmails,
+        serviceAreas: formData.serviceAreas,
+        emailNotifications: formData.emailNotifications,
+        smsNotifications: formData.smsNotifications,
+        bookingAlerts: formData.bookingAlerts,
+        promotionAlerts: formData.promotionAlerts,
+        workHours: formData.workHours,
+        currentPassword: formData.currentPassword,
+        newPassword: formData.newPassword,
+        confirmPassword: formData.confirmPassword
+      };
+
+      await axios.put(`${API_BASE_URL}/api/providers/settings`, settingsData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      // Reset password fields after successful update
+      setFormData(prev => ({
+        ...prev,
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      }));
+
+      alert('Settings saved successfully!');
+      fetchSettings(); // Refresh data
+    } catch (err) {
+      setError(err.response?.data?.message || err.message);
+      console.error('Error updating settings:', err);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  if (loading && !formData.firstName) {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-6xl flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#076870]"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
@@ -202,6 +280,25 @@ const Settings = () => {
         </nav>
       </div>
 
+      {/* Error message */}
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          {error === 'Please login to view settings' ? (
+            <div>
+              <p>{error}</p>
+              <a 
+                href="/login" 
+                className="text-blue-600 hover:text-blue-800 underline mt-2 inline-block"
+              >
+                Go to Login
+              </a>
+            </div>
+          ) : (
+            <p>{error}</p>
+          )}
+        </div>
+      )}
+
       {/* Main Content */}
       <div className="flex flex-col gap-8">
         <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -216,16 +313,18 @@ const Settings = () => {
                   <div className="flex flex-col items-center">
                     <div className="relative mb-4">
                       <img 
-                        src={formData.profileImage} 
+                        src={formData.profileImage || 'https://randomuser.me/api/portraits/men/32.jpg'} 
                         alt="Profile" 
                         className="w-32 h-32 rounded-full object-cover border-2 border-gray-200"
                       />
-                      <button 
-                        onClick={removeImage}
-                        className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-1"
-                      >
-                        <FiTrash2 size={14} />
-                      </button>
+                      {formData.profileImage && (
+                        <button 
+                          onClick={removeImage}
+                          className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-1"
+                        >
+                          <FiTrash2 size={14} />
+                        </button>
+                      )}
                     </div>
                     <label className="cursor-pointer bg-[#076870] text-white px-4 py-2 rounded-lg">
                       <input 
@@ -234,7 +333,7 @@ const Settings = () => {
                         onChange={handleImageChange}
                         accept="image/*"
                       />
-                      Change Photo
+                      {formData.profileImage ? 'Change Photo' : 'Upload Photo'}
                     </label>
                   </div>
                 </div>
@@ -248,6 +347,7 @@ const Settings = () => {
                         value={formData.firstName}
                         onChange={handleInputChange}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        required
                       />
                     </div>
                     <div>
@@ -258,6 +358,7 @@ const Settings = () => {
                         value={formData.lastName}
                         onChange={handleInputChange}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        required
                       />
                     </div>
                     <div>
@@ -281,49 +382,40 @@ const Settings = () => {
                         <option value="United States">United States</option>
                         <option value="Canada">Canada</option>
                         <option value="United Kingdom">United Kingdom</option>
+                        <option value="Australia">Australia</option>
                       </select>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-                      <div className="flex">
-                        <input
-                          type="text"
-                          name="phone"
-                          value={formData.phone}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                        />
-                        <button className="ml-2 px-3 py-2 bg-gray-100 rounded-md">
-                          <FiEdit2 />
-                        </button>
-                      </div>
+                      <input
+                        type="tel"
+                        name="phone"
+                        value={formData.phone}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        required
+                      />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                      <div className="flex">
-                        <input
-                          type="email"
-                          name="email"
-                          value={formData.email}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                        />
-                        <button className="ml-2 px-3 py-2 bg-gray-100 rounded-md">
-                          <FiEdit2 />
-                        </button>
-                      </div>
+                      <input
+                        type="email"
+                        name="email"
+                        value={formData.email}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        required
+                      />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Birth Date</label>
-                      <div className="relative">
-                        <input
-                          type="date"
-                          name="birthDate"
-                          value={formData.birthDate}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                        />
-                      </div>
+                      <input
+                        type="date"
+                        name="birthDate"
+                        value={formData.birthDate}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
                     </div>
                   </div>
                   <div className="mt-4">
@@ -334,6 +426,7 @@ const Settings = () => {
                       onChange={handleInputChange}
                       rows="3"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      placeholder="Tell clients about your experience and services"
                     />
                   </div>
                   <div className="mt-4">
@@ -406,6 +499,7 @@ const Settings = () => {
                       <option value="10 miles">10 miles</option>
                       <option value="15 miles">15 miles</option>
                       <option value="20 miles">20 miles</option>
+                      <option value="25 miles">25 miles</option>
                     </select>
                   </div>
                   <div className="flex items-end">
@@ -413,6 +507,7 @@ const Settings = () => {
                       type="button"
                       onClick={addServiceArea}
                       className="px-4 py-2 bg-[#076870] text-white rounded-md flex items-center"
+                      disabled={!formData.newArea || !formData.newRadius}
                     >
                       <FiPlus className="mr-1" /> Add Area
                     </button>
@@ -444,9 +539,6 @@ const Settings = () => {
               </div>
             </div>
           )}
-
-          {/* Payment Methods Tab */}
-          
 
           {/* Notification Settings Tab */}
           {activeTab === 'notifications' && (
@@ -599,6 +691,7 @@ const Settings = () => {
                           value={formData.currentPassword}
                           onChange={handleInputChange}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                          placeholder="Enter current password"
                         />
                         <button
                           onClick={() => setShowPassword(!showPassword)}
@@ -617,6 +710,7 @@ const Settings = () => {
                           value={formData.newPassword}
                           onChange={handleInputChange}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                          placeholder="Enter new password"
                         />
                         <button
                           onClick={() => setShowPassword(!showPassword)}
@@ -635,6 +729,7 @@ const Settings = () => {
                           value={formData.confirmPassword}
                           onChange={handleInputChange}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                          placeholder="Confirm new password"
                         />
                         <button
                           onClick={() => setShowPassword(!showPassword)}
@@ -645,12 +740,6 @@ const Settings = () => {
                       </div>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    className="mt-4 px-4 py-2 bg-[#076870] text-white rounded-md"
-                  >
-                    Update Password
-                  </button>
                 </div>
                 <div className="border-t border-gray-200 pt-4">
                   <h3 className="font-medium text-gray-700 mb-3">Two-Factor Authentication</h3>
@@ -673,8 +762,21 @@ const Settings = () => {
             <button
               type="submit"
               className="bg-[#076870] hover:bg-[#065a60] text-white px-6 py-2 rounded-lg font-medium flex items-center transition-colors"
+              disabled={loading}
             >
-              <FiCheck className="mr-2" /> Save Changes
+              {loading ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <FiCheck className="mr-2" /> Save Changes
+                </>
+              )}
             </button>
           </div>
         </form>

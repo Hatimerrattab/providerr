@@ -16,4 +16,7 @@ router.route('/read/:id')
 router.route('/read-all')
   .patch(notificationController.markAllAsRead);
 
+router.route('/:id')
+  .delete(notificationController.deleteNotification);
+
 module.exports = router;

@@ -5,6 +5,7 @@ const cors = require('cors');
 const authRoutes = require('./routes/authRoutes');
 const profileRouter = require('./routes/profileRoutes');
 const serviceRoutes = require('./routes/serviceRoutes');
+const settingRoutes = require('./routes/settingRoutes');
 const bookingRouter = require('./routes/bookingRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const earningsRouter = require('./routes/earningsRoutes');
@@ -70,7 +71,8 @@ app.get('/health', (req, res) => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/provider', providerRoutes); 
-app.use('/api/profile', profileRouter);
+app.use('/api/providers/profile', profileRouter);
+app.use('/api/providers/settings', settingRoutes);
 app.use('/api/providers/services', serviceRoutes);
 app.use('/api/bookings', bookingRouter);
 app.use('/api/earnings', earningsRouter);
